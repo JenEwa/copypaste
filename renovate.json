@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits"
+  ],
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "packageRules": [
+    {
+      "description": "Collection dependencies (galaxy.yml / requirements.yml) change what users install -> patch release",
+      "matchManagers": ["ansible-galaxy"],
+      "semanticCommitType": "fix",
+      "groupName": "collection dependencies"
+    },
+    {
+      "description": "CI images, commitizen etc. affect nothing users install -> no release; safe to automerge",
+      "matchManagers": ["gitlabci", "pip_requirements", "pep621"],
+      "semanticCommitType": "chore",
+      "automerge": true
+    }
+  ]
+}
