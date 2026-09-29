@@ -13,7 +13,7 @@ variables:
 # ---------------------------------------------------------------------------
 lint:mr-title:
   stage: lint
-  image: python:3.12-slim
+  image: python:3.12          # non-slim: includes git, which commitizen needs
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
@@ -31,14 +31,13 @@ lint:mr-title:
 # ---------------------------------------------------------------------------
 release:bump:
   stage: release
-  image: python:3.12-slim
+  image: python:3.12
   rules:
     # never re-run on the commit this job created (belt and braces next to [skip ci])
     - if: $CI_COMMIT_MESSAGE =~ /^bump:/
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
   before_script:
-    - apt-get update -qq && apt-get install -y -qq git >/dev/null
     - pip install --quiet commitizen
     - git config user.name  "Release Bot"
     - git config user.email "release-bot@${CI_SERVER_HOST}"
