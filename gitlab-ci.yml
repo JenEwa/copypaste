@@ -1,0 +1,86 @@
+stages:
+  - lint
+  - release
+  - publish
+
+variables:
+  GIT_DEPTH: 0            # full history: commitizen needs all commits since the last tag
+
+# ---------------------------------------------------------------------------
+# 1. Enforce Conventional Commit MR titles (use "squash commits" with the MR
+#    title as the squash message, so every merge to main is a clean, parseable
+#    commit). Fails the MR pipeline if the title is not conventional.
+# ---------------------------------------------------------------------------
+lint:mr-title:
+  stage: lint
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - pip install --quiet commitizen
+    - cz check --message "$CI_MERGE_REQUEST_TITLE"
+
+# ---------------------------------------------------------------------------
+# 2. On every push to the default branch (i.e. every merge): bump galaxy.yml,
+#    update CHANGELOG.md, commit, tag, push back.
+#
+#    Requires a masked CI/CD variable RELEASE_TOKEN: a project access token
+#    (role: Maintainer, scope: write_repository). If the default branch is
+#    protected, allow that token to push in Settings > Repository > Protected
+#    branches, or the push will be rejected.
+# ---------------------------------------------------------------------------
+release:bump:
+  stage: release
+  image: python:3.12-slim
+  rules:
+    # never re-run on the commit this job created (belt and braces next to [skip ci])
+    - if: $CI_COMMIT_MESSAGE =~ /^bump:/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git >/dev/null
+    - pip install --quiet commitizen
+    - git config user.name  "Release Bot"
+    - git config user.email "release-bot@${CI_SERVER_HOST}"
+    - git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git fetch --tags --quiet
+    - git checkout -B "$CI_DEFAULT_BRANCH" "$CI_COMMIT_SHA"
+  script:
+    - |
+      set +e
+      cz bump --changelog --yes
+      rc=$?
+      set -e
+      # 3 = no commits since last tag, 21 = only non-releasable commits (docs/chore/...)
+      if [ "$rc" = "3" ] || [ "$rc" = "21" ]; then
+        echo "Nothing to release."
+        exit 0
+      elif [ "$rc" != "0" ]; then
+        exit "$rc"
+      fi
+    - git push origin "$CI_DEFAULT_BRANCH" -o ci.skip
+    - git push origin --tags
+
+# ---------------------------------------------------------------------------
+# 3. (Optional) Build the collection tarball for the new tag and keep it as an
+#    artifact / publish it. Swap the publish line for `ansible-galaxy collection
+#    publish` against your Galaxy/Automation Hub if you use one.
+# ---------------------------------------------------------------------------
+publish:collection:
+  stage: publish
+  image: python:3.12-slim
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  script:
+    - pip install --quiet ansible-core
+    - ansible-galaxy collection build --output-path dist/
+    - |
+      TARBALL=$(ls dist/*.tar.gz)
+      # Upload to this project's generic package registry: <namespace>-<name>-<version>.tar.gz
+      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+        --upload-file "$TARBALL" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/collection/${CI_COMMIT_TAG#v}/$(basename "$TARBALL")"
+  artifacts:
+    paths:
+      - dist/*.tar.gz
+    expire_in: 1 year

@@ -1,0 +1,24 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+# Keep this in sync with galaxy.yml once; commitizen maintains both from then on.
+version = "1.0.0"
+version_scheme = "semver"
+tag_format = "v$version"
+
+# Rewrite the version line in galaxy.yml on every bump.
+version_files = ["galaxy.yml:^version"]
+
+# Changelog handling
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+changelog_incremental = true          # prepend new release, keep existing history untouched
+changelog_merge_prerelease = true
+
+# Commit created by `cz bump`
+bump_message = "bump: version $current_version → $new_version [skip ci]"
+
+# Bump rules (built into cz_conventional_commits):
+#   feat            -> minor
+#   fix, perf, refactor -> patch
+#   "!" after type or a "BREAKING CHANGE:" footer -> major
+#   docs, chore, ci, test, style, build -> no release
