@@ -1,0 +1,64 @@
+---
+# nachtkrabb.podman v0.14.1 -- every role input with its default.
+# Taken from README.md "## Variables" and checked against the tasks on main,
+# 2026-09-30. The collection has no defaults/ files: each role defaults its
+# inputs inline with `| default(...)`. For most variables, unset, blank or
+# null takes the default. The four *_conf variables are the exception:
+# unset, blank or null writes nothing this run.
+# Empty values below are required inputs or undefined *_conf variables.
+
+# podman
+podman_userns_sysctl_set: true            # Ubuntu 26.04 only: apply the userns sysctl live
+
+# podman_config
+podman_containers_conf:                   # undefined: /etc/containers/containers.conf untouched
+
+# podman_storage
+podman_storage_conf:                      # undefined: /etc/containers/storage.conf untouched
+podman_storage_skel: true                 # also seed /etc/skel/.config/containers/storage.conf
+
+# podman_registries
+podman_registries_conf:                   # undefined: /etc/containers/registries.conf untouched
+
+# podman_container_user
+podman_container_user_name:               # REQUIRED
+podman_container_user_system: true        # false is refused
+podman_container_user_shell: /usr/sbin/nologin
+podman_container_user_home: /home/<name>  # changing it on an existing account is refused
+podman_container_user_subid_count: 65536  # applied once, at first allocation
+podman_container_user_subid_start_min: 100000
+podman_container_user_run_migrate: true
+
+# podman_volume_backup (main entry point)
+podman_volume_backup_user:                # REQUIRED
+podman_volume_backup_tier: manual         # daily | weekly | monthly | manual; anything else is refused
+podman_volume_backup_keep_daily: 7        # each keep count applies only to its own tier
+podman_volume_backup_keep_weekly: 4
+podman_volume_backup_keep_monthly: 12
+podman_volume_backup_keep_manual: 10
+podman_volume_backup_directory: <home>/backups
+podman_volume_backup_stop: true           # stop the account's quadlet units during the export
+podman_volume_backup_export_timeout: 3600 # seconds per volume; 0 takes the default too
+
+# podman_volume_backup, tasks_from: on_image_change (all three required there)
+podman_volume_backup_unit_file:           # host path of the .container unit
+podman_volume_backup_image:               # the image about to be written
+# (plus podman_volume_backup_user)
+
+# podman_polkit_rule
+podman_polkit_rule_rules:                 # REQUIRED, non-empty list of:
+#  - name:                                # REQUIRED, ^[a-z0-9-]+$
+#    users: []                            # users or groups must be non-empty; lists, never strings
+#    groups: []
+#    target_users: []                     # empty = any target, root included
+#    action_ids: [org.freedesktop.machine1.host-shell]
+#    result: "YES"                        # quote it; bare YES/NO is a YAML boolean and is refused
+#    priority: 50                         # exactly two digits
+
+# podman_firewall
+podman_firewall_name:                     # REQUIRED, ^[a-z0-9_-]+$
+podman_firewall_ports: []                 # {port, proto: tcp|udp (default tcp), state: present}
+podman_firewall_redirects: []             # {public, port, state: present}, tcp only; public != port
+podman_firewall_state: present            # absent removes this caller's objects
+# Also read: the connection variable ansible_port (default 22). Its tcp port is always kept open,
+# and a port or redirect naming it is refused. Set it when the SSH port is only in an ssh client config.
