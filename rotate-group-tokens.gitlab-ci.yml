@@ -1,14 +1,17 @@
 # Lives in a "token rotation" repo inside the dev_ops group.
-# Rotates the shared read token and the token that writes it.
+# Rotates one read token per subgroup, plus the token that writes them.
 #
-# Tokens (both group access tokens on dev_ops, both stored masked + protected):
-#   GROUP_READ_TOKEN  role Reporter, scopes `read_repository` + `self_rotate`
-#                     Can read every repo in dev_ops and its subgroups
-#                     (ansible, tofu, ...).
-#                     Stored as a GROUP CI/CD variable on dev_ops, so every
-#                     repo below dev_ops inherits it.
-#   ROTATOR_TOKEN     scope `api`, role allowed to edit group CI/CD variables
-#                     Stored as a PROJECT CI/CD variable in this repo.
+# Tokens (all stored masked + protected):
+#   Read tokens     one group access token per subgroup (dev_ops/ansible,
+#                   dev_ops/tofu, ...), role Reporter,
+#                   scopes `read_repository` + `self_rotate`.
+#                   Each stored as a GROUP CI/CD variable on dev_ops,
+#                   e.g. ANSIBLE_READER_TOKEN, TOFU_READ_TOKEN.
+#   ROTATOR_TOKEN   group access token on dev_ops, scope `api`,
+#                   role allowed to edit group CI/CD variables.
+#                   Stored as a PROJECT CI/CD variable in this repo.
+#
+# New subgroup: create its read token + variable, add one entry to READ_TOKENS.
 #
 # Runs:
 #   - automatically from a pipeline schedule that sets ROTATE_TOKEN=true
@@ -23,19 +26,22 @@ rotate-group-tokens:
       when: manual
       allow_failure: true                 # pipeline doesn't wait on this job
   variables:
-    GROUP_ID: "CHANGE_ME"                 # numeric ID of the dev_ops group
+    # <subgroup path, "/" written as %2F>=<variable name>, space separated
+    READ_TOKENS: >-
+      dev_ops%2Fansible=ANSIBLE_READER_TOKEN
+      dev_ops%2Ftofu=TOFU_READ_TOKEN
+    VARIABLE_GROUP: "dev_ops"             # holds the variables and ROTATOR_TOKEN
     TOKEN_LIFETIME_DAYS: "60"
   before_script:
     - apk add --no-cache curl jq
     - now=$(date +%s)
     - expires_at=$(date -u -d "@$(( now + TOKEN_LIFETIME_DAYS * 86400 ))" +%F)
-    - rotate_url="$CI_API_V4_URL/groups/$GROUP_ID/access_tokens/self/rotate"
     - |
-      # rotate <current-token>: prints the new token
+      # rotate <group> <current-token>: prints the new token
       rotate() {
         curl --silent --fail --request POST \
-          --header "PRIVATE-TOKEN: $1" \
-          "$rotate_url?expires_at=$expires_at" \
+          --header "PRIVATE-TOKEN: $2" \
+          "$CI_API_V4_URL/groups/$1/access_tokens/self/rotate?expires_at=$expires_at" \
         | jq --raw-output '.token // empty'
       }
 
@@ -53,18 +59,25 @@ rotate-group-tokens:
         return 1
       }
   script:
-    # 1. Read token: rotates itself, the rotator token saves it on dev_ops
+    # 1. Each read token rotates itself, the rotator token saves it on dev_ops
     - |
-      new_read=$(rotate "$GROUP_READ_TOKEN")
-      [ -n "$new_read" ] || { echo "GROUP_READ_TOKEN rotation failed"; exit 1; }
-      save "$CI_API_V4_URL/groups/$GROUP_ID/variables/GROUP_READ_TOKEN" \
-        "$ROTATOR_TOKEN" "$new_read" \
-        || { echo "GROUP_READ_TOKEN rotated but NOT saved. Create it by hand."; exit 1; }
-      echo "GROUP_READ_TOKEN rotated, expires $expires_at"
+      for entry in $READ_TOKENS; do
+        group=${entry%%=*}
+        variable=${entry#*=}
+
+        new_token=$(rotate "$group" "$(printenv "$variable")")
+        [ -n "$new_token" ] || { echo "$variable rotation failed"; exit 1; }
+
+        save "$CI_API_V4_URL/groups/$VARIABLE_GROUP/variables/$variable" \
+          "$ROTATOR_TOKEN" "$new_token" \
+          || { echo "$variable rotated but NOT saved. Create it by hand."; exit 1; }
+
+        echo "$variable rotated, expires $expires_at"
+      done
 
     # 2. Rotator token: rotates itself and saves itself with its new value
     - |
-      new_rotator=$(rotate "$ROTATOR_TOKEN")
+      new_rotator=$(rotate "$VARIABLE_GROUP" "$ROTATOR_TOKEN")
       [ -n "$new_rotator" ] || { echo "ROTATOR_TOKEN rotation failed"; exit 1; }
       save "$CI_API_V4_URL/projects/$CI_PROJECT_ID/variables/ROTATOR_TOKEN" \
         "$new_rotator" "$new_rotator" \
