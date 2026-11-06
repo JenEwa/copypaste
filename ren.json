@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Docker images in Ansible inventory vars ending in _image",
+      "managerFilePatterns": [
+        "/(^|/)(group_vars|host_vars)/.+$/",
+        "/(^|/)inventory/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "_image:[ \\t]*[\"']?(?<depName>[^\\s\"'@]+?):(?<currentValue>[\\w][\\w.-]*)(?:@(?<currentDigest>sha256:[a-f0-9]+))?[\"']?[ \\t]*(?:\\n|$)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ]
+}
