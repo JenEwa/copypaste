@@ -17,3 +17,16 @@
     }
   ]
 }
+
+
+
+{
+  "packageRules": [
+    {
+      "description": "Checkmk tags like 2.6.0-2026.06.10",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["/check-mk-/"],
+      "versioning": "regex:^(?<compatibility>\\d+\\.\\d+\\.\\d+)-(?<major>\\d{4})[.-](?<minor>\\d{2})[.-](?<patch>\\d{2})$"
+    }
+  ]
+}
