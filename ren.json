@@ -30,3 +30,9 @@
     }
   ]
 }
+
+
+npx --yes --package renovate -- renovate-config-validator
+LOG_LEVEL=debug npx --yes renovate --platform=local > renovate.log 2>&1
+export RENOVATE_HOST_RULES='[{"matchHost":"registry.checkmk.com","hostType":"docker","username":"you","password":"secret"}]'
+grep -n "check-mk" renovate.log
