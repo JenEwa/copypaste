@@ -1,0 +1,12 @@
+{
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track local Renovate presets via GitLab tags",
+      "managerFilePatterns": ["/(^|/)renovate\\.json5?$/", "/(^|/)\\.gitlab/renovate\\.json5?$/"],
+      "matchStrings": ["\"local>(?<depName>[^:#\"]+)[^#\"]*#(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "gitlab-tags",
+      "registryUrlTemplate": "https://gitlab.example.com"
+    }
+  ]
+}
