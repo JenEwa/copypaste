@@ -1,22 +1,44 @@
-ensure_project_token() {
-  local name="ci-push-token"
-  local scopes="read_repository,write_repository"
-  local level="maintainer"
-  local duration="365d"
+ensure_pipeline_schedule() {
+  local description="Nightly pipeline"
+  local cron="0 2 * * *"
+  local timezone="Europe/Berlin"
+  local ref="main"
 
-  local count
-  count=$(GLAB_PAGER=cat glab token list --output json \
-    | jq --arg n "$name" '[.[] | select(.name == $n and .active and (.revoked | not))] | length') \
-    || { echo "Failed to list tokens" >&2; return 1; }
+  local schedule
+  schedule=$(GLAB_PAGER=cat glab schedule list --per-page 100 --output json \
+    | jq -c --arg d "$description" '[.[] | select(.description == $d)] | first // empty') \
+    || { echo "Failed to list schedules" >&2; return 1; }
 
-  if [ "$count" -gt 0 ]; then
-    echo "Token '$name' already exists, skipping" >&2
+  if [ -z "$schedule" ]; then
+    GLAB_PAGER=cat glab schedule create \
+      --description "$description" \
+      --cron "$cron" \
+      --cronTimeZone "$timezone" \
+      --ref "$ref" \
+      --active >/dev/null \
+      || { echo "Failed to create schedule '$description'" >&2; return 1; }
+    echo "Created schedule '$description'" >&2
     return 0
   fi
 
-  GLAB_PAGER=cat glab token create "$name" \
-    --access-level "$level" \
-    --scope "$scopes" \
-    --duration "$duration" \
-    || { echo "Failed to create token '$name'" >&2; return 1; }
+  local id cur_cron cur_tz cur_ref cur_active
+  id=$(jq -r '.id' <<< "$schedule")
+  cur_cron=$(jq -r '.cron' <<< "$schedule")
+  cur_tz=$(jq -r '.cron_timezone' <<< "$schedule")
+  cur_ref=$(jq -r '.ref | sub("^refs/heads/"; "")' <<< "$schedule")
+  cur_active=$(jq -r '.active' <<< "$schedule")
+
+  if [ "$cur_cron" = "$cron" ] && [ "$cur_tz" = "$timezone" ] \
+     && [ "$cur_ref" = "$ref" ] && [ "$cur_active" = "true" ]; then
+    echo "Schedule '$description' is up to date" >&2
+    return 0
+  fi
+
+  GLAB_PAGER=cat glab schedule update "$id" \
+    --cron "$cron" \
+    --cronTimeZone "$timezone" \
+    --ref "$ref" \
+    --active >/dev/null \
+    || { echo "Failed to update schedule '$description'" >&2; return 1; }
+  echo "Updated schedule '$description' (ID $id)" >&2
 }
